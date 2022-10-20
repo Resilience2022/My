@@ -1,0 +1,200 @@
+/* ----------------------- APP 定义 ------------------------- */
+App Flexible_control_light {
+	Developer:'Liyemao'
+	Version:'0.0.0.1'
+	Introduction:
+	'本APP的功能是使储配控一体机能根据375V直流母线电压调节所带灯具的功率
+	应用场景：未来大厦直流实验室
+	此函数功能实现的前提条件是：一体机能够监测直流母线的电压值'	
+}
+
+//定义域
+VPN Flexible_terminal 
+{
+	NodeType:[CABINET_Small];//不确定一体机的节点类型
+	Conditions:('');
+	Ref_VPN:[''];
+	Despription:['所有终端储配控一体机'];
+	NodeName:[''];
+}
+
+//入口函数
+[]=main(){
+	VAR Voltage {NodeType: CABINET_Small; VPN: VPN_All; Datatype: float;}                   //节点电压
+	VAR Luminance_flexiblemode {NodeType: CABINET_Small; VPN: VPN_All; Datatype: uint;}                       //柔性调节模式
+	VAR Luminance_bias {NodeType: CABINET_Small; VPN: VPN_All; Datatype: float;}       //灯具亮度的柔性修正值
+	VAR Luminance_user_input1 (Derive from: Luminance_bias){}                          //1#灯具亮度的用户设定值
+	VAR Luminance_set1 (Derive from: Luminance_bias){}                                 //1#灯具亮度的最终设定值
+	VAR Luminance_read1 (Derive from: Luminance_bias){}                                //1#灯具亮度的监测值
+	VAR Light_on_off1 {NodeType: CABINET_Small; VPN: VPN_All; Datatype: int;}          //1#灯具的开关
+	VAR Luminance_user_input2 (Derive from: Luminance_bias){}                          //2#灯具亮度的用户设定值
+	VAR Luminance_set2 (Derive from: Luminance_bias){}                                 //2#灯具亮度的最终设定值
+	VAR Luminance_read2 (Derive from: Luminance_bias){}                                //2#灯具亮度的监测值
+	VAR Light_on_off2 {NodeType: CABINET_Small; VPN: VPN_All; Datatype: int;}          //2#灯具的开关
+
+    float Voltage (Refer to: Voltage);
+    uint Luminance_flexiblemode (Refer to: Luminance_flexiblemode);
+    float Luminance_bias (Refer to: Luminance_bias);
+    float Luminance_user_input1 (Refer to: Luminance_user_input1);
+    float Luminance_set1 (Refer to: Luminance_set1);
+    float Luminance_read1 (Refer to: Luminance_read1);
+    int Light_on_off1 (Refer to: Light_on_off2);
+    float Luminance_user_input2 (Refer to: Luminance_user_input2);
+    float Luminance_set2 (Refer to: Luminance_set2);
+    float Luminance_read2 (Refer to: Luminance_read2);
+    int Light_on_off2 (Refer to: Light_on_off2);
+	//初始化
+	Luminance_flexiblemode=1;
+	Luminance_bias=0;
+	Luminance_user_input1=Luminance_read1;
+	Luminance_user_input2=Luminance_read2;
+	
+	
+	//一体机每隔一段时间检查一次用户是否有主动调节亮度，如果有就修改用户亮度设定值
+	Timer(Interval:10s) 
+	{
+		[Luminance_user_input1] = User_input_detecter1 (Luminance_set1,Luminance_read1,Light_on_off1);
+		[Luminance_user_input2] = User_input_detecter2 (Luminance_set2,Luminance_read2,Light_on_off2);
+	}
+
+	//一体机每隔一段时间就采集一次电压，并根据电压计算一次亮度偏置值，并修改照明亮度设定值
+	Timer(Interval:10s) 
+	{
+		[Luminance_set1] = Bias1 (Voltage,Luminance_flexiblemode,Luminance_bias,Luminance_user_input1,Luminance_set1,Light_on_off1);
+		[Luminance_set2] = Bias2 (Luminance_bias,Luminance_user_input2,Luminance_set2,Light_on_off2);
+	}
+}
+
+
+[float Luminance_user_input1@All] = User_input_detecter1 (float Luminance_set1@All,float Luminance_read1@All,int Light_on_off1@All)
+{
+	Swarm(NodeType:CABINET_Small; VPN:Flexible_terminal;)
+	{
+		float Luminance_set_local1 (Refer to: Luminance_set1@local:Me);
+		float Luminance_read_local1 (Refer to: Luminance_read1@local:Me);
+		float Luminance_user_input_local1 (Refer to: Luminance_user_input1@local:Me);
+		int Light_on_off_local1 (Refer to: Light_on_off1@local:Me);
+		
+		if (Light_on_off_local1==1)
+		{
+			if (Luminance_set_local1==Luminance_read_local1) {}
+			else
+			{
+				Luminance_user_input_local1=Luminance_read_local1;
+			}
+		}
+		return Luminance_user_input_local1;
+	}
+}
+
+[float Luminance_user_input2@All] = User_input_detecter2 (float Luminance_set2@All,float Luminance_read2@All,int Light_on_off2@All)
+{
+	Swarm(NodeType:CABINET_Small; VPN:Flexible_terminal;)
+	{
+		float Luminance_set_local2 (Refer to: Luminance_set2@local:Me);
+		float Luminance_read_local2 (Refer to: Luminance_read2@local:Me);
+		float Luminance_user_input_local2 (Refer to: Luminance_user_input2@local:Me);
+		int Light_on_off_local2 (Refer to: Light_on_off2@local:Me);
+		
+		if (Light_on_off_local2==1)
+		{
+			if (Luminance_set_local2==Luminance_read_local2) {}
+			else
+			{
+				Luminance_user_input_local2=Luminance_read_local2;
+			}
+		}
+		return Luminance_user_input_local2;
+	}
+}
+
+[float Luminance_set1@All] = Bias(float Voltage@All,uint Luminance_flexiblemode@All,float Luminance_bias@All,float Luminance_user_input1@All,float Luminance_set1@All,int Light_on_off1@All)
+{		
+	Swarm(NodeType:CABINET_Small; VPN:Flexible_terminal;)
+	{
+    	float Voltage_local(Refer to:Voltage @local:Me);  //局部变量，指向一体机的节点电压
+		uint Luminance_flexiblemode_me (Refer to:Luminance_flexiblemode @local:Me);           //局部变量，指向一体机的柔性调节模式
+		float Luminance_user_input_local1(Refer to:Luminance_user_input1 @local:Me);  //局部变量，指向一体机的亮度用户设定值
+		float Luminance_bias_local(Refer to:Luminance_bias @local:Me);  //局部变量，指向一体机的亮度柔性修正值
+		float Luminance_set_local1(Refer to:Luminance_set1 @local:Me);  //局部变量，指向一体机的亮度最终设定值
+		int Light_on_off_local1(Refer to:Light_on_off1 @local:Me);     //局部变量，指向一体机的照明开关
+		
+		float Vmax=400;    //临时参数，电压范围上限
+		float Vmin=300;     //临时参数，电压范围下限
+		float R;
+        uint check=0;        //临时参数，电压数据正确性判断标志
+        uint Luminance_flexiblemode1=1;      //临时参数，柔性调节模式1，调节幅度较小
+        uint Luminance_flexiblemode2=2;      //临时参数，柔性调节模式2，调节幅度较大
+        float Lmax=100;          //临时参数，亮度最大值
+        float Lmin=20;           //临时参数，亮度最小值
+    	
+    	//判断电压数据是否有异常
+		if ((Vmin<=Voltage_local) && (Voltage_local<=Vmax)) 
+		{
+			check=1;
+		}
+
+    	//如果电压数据正常，则计算照明亮度柔性修正值
+    	if (check==1)
+    	{
+    		//首先计算柔度，1代表最大柔度，正数代表调减，负数代表调增
+    		if (Voltage_local>=385) {R=-1;}
+    		if ((Voltage_local<385) && (Voltage_local>370)) {R=-(Voltage_local-370)/(385-370);}
+    		if ((Voltage_local<=370) && (Voltage_local>=350)) {R=0;}
+    		if ((Voltage_local<350) && (Voltage_local>340)) {R=(350-Voltage_local)/(350-340);}
+    		if (Voltage_local<=340) {R=1;}
+    		
+    		//根据柔度计算亮度柔性修正值
+    		Switch (Luminance_flexiblemode_me)
+    		{
+    			case Luminance_flexiblemode1: Luminance_bias_local=R*25;
+    			case Luminance_flexiblemode2: Luminance_bias_local=R*50;
+    			default: Luminance_bias_local=Luminance_bias_local;
+    		}
+    	}
+    	
+        //如果灯具处于启动状态，则计算照明亮度设定值
+        if  (Light_on_off_local1==1)
+       	{
+           	Luminance_set_local1=Luminance_user_input_local1-Luminance_bias_local;
+           	if (Luminance_set_local1>Lmax)
+           	{
+           		Luminance_set_local1=Lmax;
+           	}
+           	if (Luminance_set_local1<Lmin)
+           	{
+           		Luminance_set_local1=Lmin;
+           	} 
+       	}
+       	return Luminance_set_local1;
+   	}
+}
+
+[float Luminance_set2@All] = Bias(float Luminance_bias@All,float Luminance_user_input2@All,float Luminance_set2@All,int Light_on_off2@All)
+{		
+	Swarm(NodeType:CABINET_Small; VPN:Flexible_terminal;)
+	{
+    	float Luminance_user_input_local2(Refer to:Luminance_user_input2 @local:Me);  //局部变量，指向一体机的亮度用户设定值
+		float Luminance_bias_local(Refer to:Luminance_bias @local:Me);  //局部变量，指向一体机的亮度柔性修正值
+		float Luminance_set_local2(Refer to:Luminance_set2 @local:Me);  //局部变量，指向一体机的亮度最终设定值
+		int Light_on_off_local2(Refer to:Light_on_off2 @local:Me);     //局部变量，指向一体机的照明开关
+		
+        float Lmax=100;          //临时参数，亮度最大值
+        float Lmin=20;           //临时参数，亮度最小值
+    	
+        //如果灯具处于启动状态，则计算照明亮度设定值
+        if  (Light_on_off_local2==1)
+       	{
+           	Luminance_set_local2=Luminance_user_input_local2-Luminance_bias_local;
+           	if (Luminance_set_local2>Lmax)
+           	{
+           		Luminance_set_local2=Lmax;
+           	}
+           	if (Luminance_set_local2<Lmin)
+           	{
+           		Luminance_set_local2=Lmin;
+           	} 
+       	}
+       	return Luminance_set_local2;
+   	}
+}
